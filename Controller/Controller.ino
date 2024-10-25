@@ -23,21 +23,32 @@
 #define B_PIN A1
 #define R_PIN A2
 #define G_PIN A3
-#define Voltage_PIN A0
+#define Voltage_PIN A7
 
 unsigned long previousMillisL = 0;
 unsigned long previousMillisR = 0;
-const long interval = 2000;  // 4 seconds
+unsigned long previousMillisF = 0;
+unsigned long previousMillisV = 0;
+unsigned long previousMillisS = 0;  
+
+const long intervalS = 1000;      
+const long interval = 2000;
+
 bool lDelayActive = false;
 bool rDelayActive = false;
 
+bool moveForwardFlag = false;
 
+float lastVoltage = 0.0;
+
+int lastLdrValue = 0;                  
+unsigned long previousLdrMillis = 0;   
+const long printLdrInterval = 1000;    
 
 int ldrValue = 0;
 int sensorValue = 0;
 float voltage = 0.0;
 
-int acc, real;
 long gulCount = 0;
 unsigned short gusEncoder = 0;
 unsigned short gusEncoder_Bak = 0;
@@ -45,20 +56,25 @@ unsigned short gusEncoder_Change = 0;
 long glEncoder_Count_Bak = 100;
 unsigned short usIsFoward = 0;
 
-char lastCommand = '\0';  // Initialize to a character that won't be used
-
+char lastCommand = '\0'; 
 
 bool stat = true;
 bool stat2 = true;
 bool L_S = false;
 bool R_S = false;
-bool M_S = false;  //Miss stop
+bool M_S = false;
+
+int stopCount = 0;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(12, NeoPixel_PIN, NEO_GRB + NEO_KHZ800);
 
 void config() {
+  for (int i = 0; i < strip.numPixels(); i++) {
+    strip.setPixelColor(i, strip.Color(0, 0, 0));
+  }
+  strip.show();
   pinMode(R_ENCODER_SIG_Pin, INPUT);
   pinMode(L_ENCODER_SIG_Pin, INPUT);
   pinMode(LDR_PIN, INPUT);
@@ -84,50 +100,38 @@ void config() {
   lcd.backlight();
   lcd.clear();
 
-  lcd.print("Pasindu Sahan");
-  Serial.write("N", 1);
+  lcd.clear();
+  lcd.print("   Group - 48");
+  lcd.setCursor(0, 1);
+  lcd.print(" Pasindu Sahan");
+  delay(2000);
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   config();
-  strip.begin();
-  strip.show();
-  strip.setBrightness(250);
-  showWhite();
-
   analogWrite(LS, 180);
   analogWrite(RS, 180);
-
-  // turnRight();
 }
 
 void showWhite() {
   for (int i = 0; i < strip.numPixels(); i++) {
-    strip.setPixelColor(i, strip.Color(255, 255, 0));  // Set pixel color to white
+    strip.setPixelColor(i, strip.Color(255, 255, 255)); 
   }
-  strip.show();  // Update the strip to show the changes
+  strip.show();  
 }
 
 void loop() {
-  // ldr();
-  // voltageCalc();
   if (digitalRead(Green_Button_Pin) == 1 && stat == true) {
-    // // // // //Serial.println("Acc:- ");
     stat = false;
-    // Serial.write("i", 1);
   }
 
   if (digitalRead(Red_Button_Pin) == 1 && stat2 == true) {
-    // // // // //Serial.println("Acc:- ");
     stat2 = false;
-    // Serial.write("h", 1);
   }
 
   if (stat == false) {
-    // turnRight();
-    // showoff();
-    check();
+    //check();
   }
 
   // if (stat2 == false) {
@@ -135,9 +139,8 @@ void loop() {
   //   // stopMotors();
   // }
 
-  else if (M_S == true) {
-    //// // // //Serial.println("turnRight");
 
+  else if (M_S == true) {
     analogWrite(LS, 225);
     analogWrite(RS, 225);
     digitalWrite(B_PIN, HIGH);
@@ -146,18 +149,11 @@ void loop() {
     long lEncoder_Count = 0;
     int acceleration = ((180) * 1);
     if ((glEncoder_Count_Bak <= acceleration - 34)) {
-      // digitalWrite(IN1, HIGH);
-      // digitalWrite(IN2, LOW);
-      // // // // //Serial.println(glEncoder_Count_Bak);
-
       digitalWrite(RB, HIGH);
       digitalWrite(LB, HIGH);
       usIsFoward = 1;
     } else {
-      // // // //Serial.println("Stop");
       M_S = false;
-      //Serial.write("A", 1);
-
       digitalWrite(RF, LOW);
       digitalWrite(RB, LOW);
       digitalWrite(LF, LOW);
@@ -171,7 +167,6 @@ void loop() {
       gusEncoder_Change = 0;
       glEncoder_Count_Bak = 100;
       usIsFoward = 0;
-      // calibrate(acceleration, realValue);
     }
 
     lEncoder_Count = vRead_Encoder(R_ENCODER_SIG_Pin, usIsFoward);
@@ -192,8 +187,6 @@ void loop() {
     long lEncoder_Count = 0;
     int acceleration = ((360) * 1);
     if (glEncoder_Count_Bak <= acceleration - 34) {
-      // digitalWrite(IN1, HIGH);
-      // digitalWrite(IN2, LOW);
       digitalWrite(RB, HIGH);
       digitalWrite(LF, HIGH);
       usIsFoward = 1;
@@ -203,7 +196,7 @@ void loop() {
       digitalWrite(LF, LOW);
       digitalWrite(LB, LOW);
       L_S = false;
-      Serial.write("A", 1);
+      Serial.println("ACK");
 
       int realValue = glEncoder_Count_Bak;
       stat2 = true;
@@ -213,7 +206,6 @@ void loop() {
       gusEncoder_Change = 0;
       glEncoder_Count_Bak = 100;
       usIsFoward = 0;
-      // calibrate(acceleration, realValue);
     }
 
     lEncoder_Count = vRead_Encoder(L_ENCODER_SIG_Pin, usIsFoward);
@@ -224,8 +216,6 @@ void loop() {
   }
 
   else if (R_S == true) {
-    //// // // //Serial.println("turnRight");
-
     analogWrite(LS, 225);
     analogWrite(RS, 225);
     digitalWrite(B_PIN, HIGH);
@@ -234,17 +224,12 @@ void loop() {
     long lEncoder_Count = 0;
     int acceleration = ((360) * 1);
     if ((glEncoder_Count_Bak <= acceleration - 34)) {
-      // digitalWrite(IN1, HIGH);
-      // digitalWrite(IN2, LOW);
-      // // // // //Serial.println(glEncoder_Count_Bak);
-
       digitalWrite(RF, HIGH);
       digitalWrite(LB, HIGH);
       usIsFoward = 1;
     } else {
       R_S = false;
-      Serial.write("A", 1);
-
+      Serial.println("ACK");
       digitalWrite(RF, LOW);
       digitalWrite(RB, LOW);
       digitalWrite(LF, LOW);
@@ -258,7 +243,6 @@ void loop() {
       gusEncoder_Change = 0;
       glEncoder_Count_Bak = 100;
       usIsFoward = 0;
-      // calibrate(acceleration, realValue);
     }
 
     lEncoder_Count = vRead_Encoder(R_ENCODER_SIG_Pin, usIsFoward);
@@ -272,8 +256,7 @@ void loop() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillisL >= interval) {
       L_S = true;
-      lDelayActive = false;  // Reset the flag
-      // // // //Serial.println("LL");
+      lDelayActive = false;  
     }
   }
 
@@ -281,42 +264,56 @@ void loop() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillisR >= interval) {
       R_S = true;
-      rDelayActive = false;  // Reset the flag
-      // // // //Serial.println("RR");
+      rDelayActive = false;  
+    }
+  }
+
+  if (moveForwardFlag) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisF >= interval) {
+      moveForward();
+      moveForwardFlag = false; 
     }
   }
 
   handleMotorCommands();
+  delay(1);
 }
 
-void check() {
-  // // // //Serial.print("Check Value: ");
-  Serial.write("H", 1);
-  stat = true;
-}
 void ldr() {
-  ldrValue = analogRead(LDR_PIN);
-  // // // // //Serial.print("LDR Value: ");
-  // // // // //Serial.println(ldrValue);
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousLdrMillis >= printLdrInterval) {
+    previousLdrMillis = currentMillis;
+
+    ldrValue = analogRead(LDR_PIN);
+
+    if (abs(ldrValue - lastLdrValue) > 100) {
+      Serial.println(ldrValue);
+      lastLdrValue = ldrValue; 
+    }
+  }
 }
 
 void voltageCalc() {
-  sensorValue = analogRead(Voltage_PIN);
-  // Calculate the voltage (assuming a 5V reference voltage)
-  voltage = sensorValue * (12 / 1023.0);
-  // // // //Serial.print("Sensor Value: ");
-  // // // //Serial.print(sensorValue);
-  // // // //Serial.print(" - Voltage: ");
-  // // // //Serial.println(voltage);
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillisV >= interval) {
+    previousMillisV = currentMillis; 
+
+    int sensorValue = analogRead(Voltage_PIN);
+    voltage = mapToVoltage(sensorValue);
+
+    if (abs(voltage - lastVoltage) > 1.0) {
+      //Serial.print("Voltage: - ");
+      Serial.println(voltage);
+      lastVoltage = voltage; 
+    }
+  }
 }
 
-void calibrate(int acc, int real) {
-  // // // //Serial.print("Acc:- ");
-  // // // //Serial.print(acc);
-  // // // //Serial.print(" Real:-");
-  // // // //Serial.print(real);
-  // // // //Serial.print("  Diff:- ");
-  // // // //Serial.println(real - acc);
+float mapToVoltage(int sensorValue) {
+  return map(sensorValue, 148, 488, 281, 1212) / 100.0;
 }
 
 long vRead_Encoder(unsigned short Encoder_Pin, unsigned short usForward_Reverse) {
@@ -342,8 +339,8 @@ long vRead_Encoder(unsigned short Encoder_Pin, unsigned short usForward_Reverse)
 }
 
 void moveForward() {
-  analogWrite(LS, 170);
-  analogWrite(RS, 170);
+  analogWrite(LS, 180);
+  analogWrite(RS, 180);
   digitalWrite(G_PIN, HIGH);
   digitalWrite(B_PIN, LOW);
   digitalWrite(R_PIN, LOW);
@@ -352,99 +349,13 @@ void moveForward() {
   digitalWrite(RB, LOW);
   digitalWrite(LF, HIGH);
   digitalWrite(LB, LOW);
-  delay(500);
 }
 
 void moveBackward() {
-  Serial.write("A", 1);
   digitalWrite(RF, LOW);
   digitalWrite(RB, HIGH);
   digitalWrite(LF, LOW);
   digitalWrite(LB, HIGH);
-}
-
-void turnLeft() {
-  analogWrite(LS, 225);
-  analogWrite(RS, 225);
-  digitalWrite(B_PIN, HIGH);
-  digitalWrite(R_PIN, LOW);
-  digitalWrite(G_PIN, LOW);
-
-
-  long lEncoder_Count = 0;
-  int acceleration = ((360) * 1);
-  if (glEncoder_Count_Bak <= acceleration - 34) {
-    // digitalWrite(IN1, HIGH);
-    // digitalWrite(IN2, LOW);
-    digitalWrite(RB, HIGH);
-    digitalWrite(LF, HIGH);
-    usIsFoward = 1;
-  } else {
-    digitalWrite(RF, LOW);
-    digitalWrite(RB, LOW);
-    digitalWrite(LF, LOW);
-    digitalWrite(LB, LOW);
-
-    int realValue = glEncoder_Count_Bak;
-    stat2 = true;
-    gulCount = 0;
-    gusEncoder = 0;
-    gusEncoder_Bak = 0;
-    gusEncoder_Change = 0;
-    glEncoder_Count_Bak = 100;
-    usIsFoward = 0;
-    // calibrate(acceleration, realValue);
-  }
-
-  lEncoder_Count = vRead_Encoder(L_ENCODER_SIG_Pin, usIsFoward);
-
-  if (lEncoder_Count != glEncoder_Count_Bak) {
-    glEncoder_Count_Bak = lEncoder_Count;
-  }
-}
-
-void turnRight() {
-  // // // //Serial.println("turnRight");
-
-  analogWrite(LS, 225);
-  analogWrite(RS, 225);
-  digitalWrite(B_PIN, HIGH);
-  digitalWrite(R_PIN, LOW);
-  digitalWrite(G_PIN, HIGH);
-  long lEncoder_Count = 0;
-  int acceleration = ((360) * 1);
-  if ((glEncoder_Count_Bak <= acceleration - 34) && R_S == false) {
-    // digitalWrite(IN1, HIGH);
-    // digitalWrite(IN2, LOW);
-    // // // // //Serial.println(glEncoder_Count_Bak);
-
-    digitalWrite(RF, HIGH);
-    digitalWrite(LB, HIGH);
-    usIsFoward = 1;
-  } else {
-    // // // //Serial.println("Stop");
-    R_S = true;
-    digitalWrite(RF, LOW);
-    digitalWrite(RB, LOW);
-    digitalWrite(LF, LOW);
-    digitalWrite(LB, LOW);
-
-    int realValue = glEncoder_Count_Bak;
-    stat = true;
-    gulCount = 0;
-    gusEncoder = 0;
-    gusEncoder_Bak = 0;
-    gusEncoder_Change = 0;
-    glEncoder_Count_Bak = 100;
-    usIsFoward = 0;
-    // calibrate(acceleration, realValue);
-  }
-
-  lEncoder_Count = vRead_Encoder(R_ENCODER_SIG_Pin, usIsFoward);
-
-  if (lEncoder_Count != glEncoder_Count_Bak) {
-    glEncoder_Count_Bak = lEncoder_Count;
-  }
 }
 
 void showoff() {
@@ -455,8 +366,6 @@ void showoff() {
 }
 
 void stopMotors() {
-  Serial.write("A", 1);
-
   digitalWrite(R_PIN, HIGH);
   digitalWrite(G_PIN, LOW);
   digitalWrite(B_PIN, LOW);
@@ -467,81 +376,147 @@ void stopMotors() {
   digitalWrite(LB, LOW);
 }
 
+void intial() {
+  gulCount = 0;
+  gusEncoder = 0;
+  gusEncoder_Bak = 0;
+  gusEncoder_Change = 0;
+  glEncoder_Count_Bak = 100;
+  usIsFoward = 0;
+  stat = true;
+  stat2 = true;
+  L_S = false;
+  R_S = false;
+  M_S = false;
+  stopCount = 0;
+
+  lcd.clear();
+  displayMessage("Connected With Raspberry PI");
+}
+
+void arrow() {
+  strip.begin();
+  strip.show();
+  strip.setBrightness(255);
+  showWhite();
+  lcd.clear();
+  displayMessage("Arrow Identify Begins");
+}
+
+void off() {
+  for (int i = 0; i < strip.numPixels(); i++) {
+    strip.setPixelColor(i, strip.Color(0, 0, 0));
+  }
+  strip.show();
+
+  lcd.clear();
+  displayMessage("Arrow Identify Stopped");
+}
+
+void quit() {
+  lcd.clear();
+  displayMessage("Disconnect From Raspberry PI");
+}
+
 
 void handleMotorCommands() {
+  static unsigned long lastAckTime = 0; 
+  const unsigned long ackDelay = 200;
+
   if (Serial.available() > 0) {
     char command = Serial.read();
-    lcd.clear();
-    lcd.print(command);
-    // Debug: Print the current command
-    // // // // //Serial.print("Received command: ");
-    // // // // //Serial.println(command);
 
-    // Ignore empty or invalid characters
     if (command == '\n' || command == '\r' || command == '\0') {
-      return;  // Skip processing for empty or invalid input
+      return;
     }
 
-    // Only process the command if it's different from the last command
-    if (command != lastCommand) {
-
+    if ((command != lastCommand) || command == 'S' || command == 'D') {
       lastCommand = command;
-
-      // Debug: Print the last command for comparison
-      // // // // // //Serial.print("Last command was: ");
-      // // // // // //Serial.println(lastCommand);
-
+      lcd.clear();
       switch (command) {
         case 'F':
           stopMotors();
-          delay(2000);
-          Serial.write("A", 1);
+          lcd.print("Forward");
 
-          moveForward();
+          previousMillisF = millis();
+          moveForwardFlag = true;
           break;
         case 'B':
           stopMotors();
-          delay(2000);
+          lcd.print("Backward");
           moveBackward();
           break;
         case 'L':
           stopMotors();
-          delay(2000);
-          // turnLeft();
-          M_S = true;
-          previousMillisL = millis();  // Start the delay
-          lDelayActive = true;         // Set the flag to indicate delay is active
+          lcd.print("Left");
+          //M_S = true;
+          previousMillisL = millis();
+          lDelayActive = true;
           break;
         case 'R':
           stopMotors();
-          delay(2000);
-          // turnRight();
-          M_S = true;
-          previousMillisR = millis();  // Start the delay for R_S
-          rDelayActive = true;         // Set the flag to indicate delay is active
+          //M_S = true;
+          lcd.print("Right");
+          previousMillisR = millis();
+          rDelayActive = true;
           break;
         case 'M':
           stopMotors();
-          delay(2000);
-          // turnRight();
           M_S = true;
           break;
         case 'S':
           stopMotors();
+          lcd.print("Stop");
+          stopCount++;
           break;
-        default:
-          // Handle unknown commands
-          // // // //Serial.print("Unknown command: ");
-          // // // //Serial.println(command);
+        case 'D':
+          sendStatusToPython();
+          break;
+        case 'I':
+          intial();
+          break;
+        case 'A':
+          arrow();
+          break;
+        case 'O':
+          stopMotors();
+          off();
+          break;
+        case 'Q':
+          stopMotors();
+          quit();
           break;
       }
-
-      // Debug: Print the updated last command
-      // // // // // //Serial.print("Updated last command to: ");
-      // // // // // //Serial.println(lastCommand);
+      Serial.println("ACK");
     } else {
-      // Debug: Print a message if the command is the same as the last
-      // // // // // //Serial.println("Command is the same as the last command. Ignoring.");
+      Serial.println("ACK");
     }
   }
 }
+
+
+void sendStatusToPython() {
+  int ldrValue = analogRead(LDR_PIN);
+  float voltage = mapToVoltage(analogRead(Voltage_PIN));
+  Serial.print("LDR: ");
+  Serial.print(ldrValue);
+  Serial.print(", Voltage: ");
+  Serial.println(voltage);
+}
+
+void displayMessage(const String& text) {
+  lcd.clear();
+  if (text.length() <= 16) {
+    lcd.print(text); 
+  } else {
+    int lastSpace = text.lastIndexOf(' ', 16); 
+    if (lastSpace == -1) {
+      lastSpace = 16;
+    }
+
+    lcd.print(text.substring(0, lastSpace));
+    lcd.setCursor(0, 1);
+    lcd.print(text.substring(lastSpace + 1));
+  }
+}
+
