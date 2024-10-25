@@ -165,7 +165,7 @@ def read_serial():
         print(f"Received from serial: {data}")
         if data == "A":
             waiting_for_response = False  # Stop waiting for response
-        elif data == "NNN":
+        elif data == "N":
             # Reset variables to restart processing
             prev_direction = None
             frame_counter = 0
